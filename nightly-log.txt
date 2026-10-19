@@ -1,0 +1,4 @@
+RimRunnerWyoming nightly scores: window 2026-10-17..2026-10-19 (source auto); 70 teams, 207 games, season start 2026-12-11
+preseason: today 2026-10-19 is before SEASON_START 2026-12-11; no MaxPreps requests this run
+apply: {'matched': 0, 'rescheduled': 0, 'added': 0, 'pending': 0}; ledger finals 0
+no data change; 0 MaxPreps requests; 0.0s

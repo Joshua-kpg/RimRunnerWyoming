@@ -1,0 +1,68 @@
+rules_version = '2';
+// RimRunner Firestore rules (same as the other Rim Runner states). Project: the site's own Firebase project (rimrunneridaho, not created yet: HELD).
+// Data written by index.html: profiles/{uid}, userFollows/{uid},
+// picks/{week}/entries/{uid}, teamFollows/{teamId}. Everything else is denied.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function okName(n) { return n is string && n.size() > 0 && n.size() <= 64; }
+    function okTime(t) { return t is int || t is float; }
+
+    // Private profile (holds the reset email): owner only.
+    match /profiles/{uid} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['name', 'email', 'created', 'updated'])
+        && okName(request.resource.data.name)
+        && (!('email' in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 254))
+        && (!('created' in request.resource.data) || okTime(request.resource.data.created))
+        && (!('updated' in request.resource.data) || okTime(request.resource.data.updated));
+    }
+
+    // Followed-team list: owner only.
+    match /userFollows/{uid} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['teams', 'updated'])
+        && request.resource.data.teams is list
+        && request.resource.data.teams.size() <= 500
+        && (!('updated' in request.resource.data) || okTime(request.resource.data.updated));
+    }
+
+    // Weekly picks: any signed-in user can read (leaderboard); only the owner writes their entry.
+    match /picks/{week}/entries/{uid} {
+      allow read: if signedIn();
+      allow delete: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && week.size() <= 32
+        && request.resource.data.keys().hasOnly(['name', 'picks', 'confirmed', 'confirmedWeek', 'at'])
+        && okName(request.resource.data.name)
+        && request.resource.data.picks is map
+        && request.resource.data.picks.size() <= 50
+        && request.resource.data.confirmed is bool
+        && request.resource.data.confirmedWeek is string
+        && request.resource.data.confirmedWeek.size() <= 32
+        && okTime(request.resource.data.at);
+    }
+
+    // Public follower counts: anyone reads; signed-in users may only move the count by exactly 1.
+    match /teamFollows/{teamId} {
+      allow read: if teamId.size() <= 100;
+      allow create: if signedIn() && teamId.size() <= 100
+        && request.resource.data.keys().hasOnly(['count'])
+        && request.resource.data.count == 1;
+      allow update: if signedIn()
+        && request.resource.data.keys().hasOnly(['count'])
+        && request.resource.data.count is int
+        && (request.resource.data.count == resource.data.count + 1
+            || (request.resource.data.count == resource.data.count - 1 && resource.data.count > 0));
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

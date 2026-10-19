@@ -1,0 +1,95 @@
+name: Nightly scores
+
+# Wyoming boys season opens SEASON_START (first game on the MaxPreps schedules; WHSAA first boys game day Thu Dec 10, 2026). Before that date the script makes no
+# MaxPreps requests (preseason guard in scripts/update_scores.py), so the schedule below is safe to leave on.
+
+# GitHub cron is UTC and ignores daylight saving time.
+#   06:30 UTC = 11:30 pm MST the evening before (12:30 am MDT)
+#   14:00 UTC = 7:00 am MST (8:00 am MDT)
+# Scheduled runs can start a few minutes late when GitHub is busy.
+on:
+  schedule:
+    - cron: "30 6 * * *"
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days back to fetch (ending today, Mountain time)"
+        default: "3"
+      force_deploy:
+        description: "Deploy to Cloudflare even if no data changed"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly-scores
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CF_TOKEN_PRESENT: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch MaxPreps finals and update site data
+        id: update
+        run: |
+          python scripts/update_scores.py --days "${{ inputs.days || '3' }}" --log nightly-log.txt
+          if git diff --quiet -- index.html data/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit if data changed
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          git config user.name "rimrunner-scores[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html data/results.json
+          git commit -m "Nightly scores: $(date -u +%Y-%m-%d) ($(TZ=America/Denver date +%H:%M) MT)"
+          git push
+
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-log-${{ github.run_id }}
+          path: nightly-log.txt
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Prepare Cloudflare deploy folder
+        if: steps.update.outputs.changed == 'true' || inputs.force_deploy
+        run: |
+          mkdir -p _deploy
+          cp index.html _deploy/index.html
+          if [ -d logos ]; then cp -r logos _deploy/logos; fi
+          printf '/logos/*\n  Cache-Control: public, max-age=604800\n' > _deploy/_headers
+
+      - name: Skip Cloudflare deploy (no API token secret)
+        if: (steps.update.outputs.changed == 'true' || inputs.force_deploy) && env.CF_TOKEN_PRESENT != 'true'
+        run: |
+          echo "Cloudflare deploy skipped (expected): Wyoming is HELD (waiting on hosting); the GitHub Pages preview https://joshua-kpg.github.io/RimRunnerWyoming/ updates from the commit."
+
+      - name: Deploy to Cloudflare Pages
+        if: (steps.update.outputs.changed == 'true' || inputs.force_deploy) && env.CF_TOKEN_PRESENT == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: 886fae922152509de20cdfb880c41a1c
+          command: pages deploy _deploy --project-name rimrunnerwyoming --branch main --commit-dirty=true
+
+      - name: Nothing to deploy
+        if: steps.update.outputs.changed != 'true' && !inputs.force_deploy
+        run: echo "No data changed; no commit and no Cloudflare deploy this run."
