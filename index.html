@@ -866,8 +866,9 @@ let pendingPick = null;
 const SYSTEM = {
   startRating: 1500,
   homeCourtPoints: 2.4,
-  pointsPer100Elo: 8,
-  marketSpreadS: 7.3,
+  pointsPer100Elo: 13.5,
+  marketSpreadS: 12.31875, // 7.3 x 13.5/8: same win % for a given Elo gap as the old 8-pt scale
+  ratingHomeElo: 30,      // home edge inside Elo rating updates (unchanged; was 2.4 x 100/8)
   leagueTotal: 118,
   k: 20,
   divPrior: {} // not used; home edge = homeCourtPoints (30 Elo)
@@ -887,7 +888,7 @@ function applySeasonFade() {
   const form = {};
   const n = {};
   DATA.teams.forEach(t => { form[t.id] = t.lastYearRating; n[t.id] = 0; });
-  const homeElo = SYSTEM.homeCourtPoints * (100 / SYSTEM.pointsPer100Elo);
+  const homeElo = SYSTEM.ratingHomeElo;
   const games = DATA.games
     .filter(g => g.status === "final" && g.date >= SEASON_START && g.homeScore != null && g.awayScore != null)
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -1068,7 +1069,7 @@ function gamePred(g) {
   const maxRating = Math.max(...DATA.teams.map(t => t.rating));
   const quality = ((home.rating + away.rating) / 2) / Math.max(maxRating, 1);
   const absSpread = Math.abs(spreadRaw);
-  const closeness = absSpread <= 5 ? 1 : absSpread <= 10 ? 0.65 : absSpread <= 15 ? 0.35 : 0.1;
+  const closeness = absSpread <= 7 ? 1 : absSpread <= 10 ? 0.65 : absSpread <= 15 ? 0.35 : 0.1;
   const rivalry = rivalryFactor(g.homeId, g.awayId);
   const rankOf = tm => 1 + DATA.teams.filter(x => x.rating > tm.rating).length;
   const avgRank = (rankOf(home) + rankOf(away)) / 2;
@@ -2856,12 +2857,12 @@ function howPage() {
       <p><strong>Rating (Elo):</strong> Every team starts from its 2025-26 rating. After each 2026-27 final, the winner gains and the loser drops: change = 20 × (result − expected), where expected = 1 / (1 + 10^((opponent − team) / 400)). Only wins and losses count, not margin.</p>
       <p><strong>Preseason ratings:</strong> The same Elo, run twice in date order over every 2025-26 final between two of the ${DATA.teams.length} teams (MaxPreps results). Pass 1 starts everyone at 1500 plus a small class prior: WHSAA 4A +20, 3A +6.67, 2A −6.67, 1A −20; Other 0 (about 3 points top to bottom). Pass 2 replays the season starting from the pass-1 ratings, so early-season games are judged against realistic opponent strength. Forfeits count by the posted win/loss. Games against out-of-state or unlisted opponents are left out.</p>
       <p><strong>New season fade:</strong> The published number blends this year's Elo with last year's. After n games it is (n/8) × this year + (1 − n/8) × last year. Zero games = last year. After 8 games it is all this year.</p>
-      <p><strong>Home court:</strong> +2.4 points for the home team (worth 30 Elo). Games MaxPreps lists at a neutral site (holiday tournaments, showcases, tournament games at a host gym) get no home edge, in predictions or in rating updates.</p>
-      <p><strong>Spread:</strong> 100 rating points ≈ 8 points. Favorite is listed with the margin, like Sheridan -4.5.</p>
+      <p><strong>Home court:</strong> +2.4 points for the home team in predictions; rating updates give the home team a 30-Elo edge. Games MaxPreps lists at a neutral site (holiday tournaments, showcases, tournament games at a host gym) get no home edge, in predictions or in rating updates.</p>
+      <p><strong>Spread:</strong> 100 rating points ≈ 13.5 points. Favorite is listed with the margin, like Sheridan -4.5.</p>
       <p><strong>Predicted score / over-under:</strong> League average total is 118, split around the spread.</p>
-      <p><strong>Win chance:</strong> Same predicted margin as the spread, then P(home) = 1 / (1 + e^(−margin / 7.3)).</p>
+      <p><strong>Win chance:</strong> Same predicted margin as the spread, then P(home) = 1 / (1 + e^(−margin / 12.3)).</p>
       <p><strong>SOS</strong> = average preseason Elo of the opponents you played in 2025-26. <strong>QW</strong> = 2025-26 wins over a team rated higher going into the game (second pass). <strong>Bad losses</strong> = losses to a team rated lower going in. <strong>MPR*</strong> = 0.25 × win % + 0.50 × opponents' win % + 0.25 × opponents' opponents' win %, 2025-26, in-list games only. It's only for reference; WHSAA regional and state tournament seeding does not use this.</p>
-      <p><strong>Big game:</strong> 85% how highly the two teams rank (average statewide rank) + 15% how close the spread is. Closeness: spread 0–5 = full, 5–10 = 0.65, 10–15 = 0.35, over 15 = 0.1. A pair shows up only once per week.</p>
+      <p><strong>Big game:</strong> 85% how highly the two teams rank (average statewide rank) + 15% how close the spread is. Closeness: spread 0–7 = full, 7–10 = 0.65, 10–15 = 0.35, over 15 = 0.1. A pair shows up only once per week.</p>
       <p><strong>Conference champs:</strong> Best record in conference games only. A share of first counts as a title. Every pair is treated as home and home, using the same win chance as the matchup calculator, over 20,000 simulated seasons. Conferences are the WHSAA 2026-27 quadrants (for example 1A Northeast, 1A Northwest, 1A Southeast, 1A Southwest, 2A Northwest, 2A Southwest, 2A Northeast): each class has a Northwest, Southwest, Northeast and Southeast quadrant, and only games inside a quadrant count here (3A also counts cross-quad games for its regional seeds; those are not included). Independents are not in any conference. Conferences with only one of our teams are left out.</p>
       <p><strong>Picks:</strong> Each week has 10 games. Pick who covers the listed spread. Correct cover = 1 point. Push = no point. Not betting. No coins, no cash, no prizes. Accounts and picks save in this browser. They sync across devices only after the site's Firebase project is connected.</p>
       <p><strong>Data:</strong> Teams, schedules and results come from MaxPreps; games between listed teams that MaxPreps does not list yet come from the official WHSAA schedule (DragonFly), and where the two disagree on a game’s date or home team, the WHSAA schedule is used. Classes and quadrants follow the WHSAA 2026-27 culminating event structure. Games involving a WHSAA school before the WHSAA first contest (Thu Dec 10, 2026) are left out; games between two non-WHSAA schools are kept. Regional and state tournament slots (1A/2A from Feb 25, 3A/4A from Mar 4) are not listed until real finals come in. Game times are Mountain time. The 2026-27 schedule shows only games between two of these teams, deduplicated to one game per pair per date. Out-of-state and unlisted opponents are not shown and do not move ratings, but their results do count in each W-L record. Scores update nightly (about 11:30 pm and 7 am Mountain time) from MaxPreps finals; forfeits count by the posted win/loss.</p>
