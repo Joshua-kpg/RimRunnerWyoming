@@ -922,14 +922,19 @@ function predictMatchup(home, away, neutral) {
   const homeAdj = home.rating + (neutral ? 0 : SYSTEM.homeCourtPoints) * (100 / SYSTEM.pointsPer100Elo);
   const margin = ((homeAdj - away.rating) / 100) * SYSTEM.pointsPer100Elo;
   const homeWin = 1 / (1 + Math.exp(-margin / SYSTEM.marketSpreadS));
-  let predHome = Math.max(40, Math.round(SYSTEM.leagueTotal / 2 + margin / 2));
-  let predAway = Math.max(40, Math.round(SYSTEM.leagueTotal / 2 - margin / 2));
-  let spreadRaw = predHome - predAway;
-  spreadRaw = Math.round(spreadRaw * 2) / 2;
+  // Spread = the real margin rounded to the nearest 0.5 (was: two rounded scores subtracted, so only even numbers).
+  let spreadRaw = Math.round(margin * 2) / 2;
   if (spreadRaw === 0) {
     if (homeWin > 0.5) spreadRaw = 0.5;
     else if (homeWin < 0.5) spreadRaw = -0.5;
   }
+  // Predicted score: the favorite wins by the spread (a half-point spread rounds up to the next whole point,
+  // so the favorite still covers), total stays at leagueTotal (+1 when the gap is odd), no score below 40.
+  const gap = Math.ceil(Math.abs(spreadRaw));
+  const favPts = Math.max(40 + gap, Math.ceil((SYSTEM.leagueTotal + gap) / 2));
+  const dogPts = favPts - gap;
+  const predHome = spreadRaw >= 0 ? favPts : dogPts;
+  const predAway = spreadRaw >= 0 ? dogPts : favPts;
   return {
     predHome,
     predAway,
@@ -2858,7 +2863,7 @@ function howPage() {
       <p><strong>Preseason ratings:</strong> The same Elo, run twice in date order over every 2025-26 final between two of the ${DATA.teams.length} teams (MaxPreps results). Pass 1 starts everyone at 1500 plus a small class prior: WHSAA 4A +20, 3A +6.67, 2A −6.67, 1A −20; Other 0 (about 3 points top to bottom). Pass 2 replays the season starting from the pass-1 ratings, so early-season games are judged against realistic opponent strength. Forfeits count by the posted win/loss. Games against out-of-state or unlisted opponents are left out.</p>
       <p><strong>New season fade:</strong> The published number blends this year's Elo with last year's. After n games it is (n/8) × this year + (1 − n/8) × last year. Zero games = last year. After 8 games it is all this year.</p>
       <p><strong>Home court:</strong> +2.4 points for the home team in predictions; rating updates give the home team a 30-Elo edge. Games MaxPreps lists at a neutral site (holiday tournaments, showcases, tournament games at a host gym) get no home edge, in predictions or in rating updates.</p>
-      <p><strong>Spread:</strong> 100 rating points ≈ 13.5 points. Favorite is listed with the margin, like Sheridan -4.5.</p>
+      <p><strong>Spread:</strong> 100 rating points ≈ 13.5 points. The predicted margin is rounded to the nearest half point and the favorite is listed with it, like Sheridan -4.5. The predicted score has the favorite winning by that margin (a half point rounds up to the next whole point).</p>
       <p><strong>Predicted score / over-under:</strong> League average total is 118, split around the spread.</p>
       <p><strong>Win chance:</strong> Same predicted margin as the spread, then P(home) = 1 / (1 + e^(−margin / 12.3)).</p>
       <p><strong>SOS</strong> = average preseason Elo of the opponents you played in 2025-26. <strong>QW</strong> = 2025-26 wins over a team rated higher going into the game (second pass). <strong>Bad losses</strong> = losses to a team rated lower going in. <strong>MPR*</strong> = 0.25 × win % + 0.50 × opponents' win % + 0.25 × opponents' opponents' win %, 2025-26, in-list games only. It's only for reference; WHSAA regional and state tournament seeding does not use this.</p>
